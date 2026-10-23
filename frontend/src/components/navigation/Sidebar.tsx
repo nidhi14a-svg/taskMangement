@@ -11,11 +11,11 @@ import {
   Plus,
   FileCode,
   LogOut,
-  Sparkles,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/common/Button';
-import { Badge } from '@/components/common/Badge';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface SidebarProps {
   onCreateTask?: () => void;
@@ -26,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentFilter = searchParams ? searchParams.get('filter') : null;
+  const { user, logout } = useAuth();
 
   const navItems = [
     {
@@ -53,6 +54,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
       isActive: pathname === '/board',
     },
   ];
+
+  const getInitials = (name?: string) => {
+    if (!name) return 'TF';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
 
   return (
     <aside
@@ -149,20 +157,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center justify-center font-semibold text-xs shrink-0">
-              AD
+              {getInitials(user?.name)}
             </div>
             <div className="truncate">
-              <p className="text-xs font-semibold text-slate-800 truncate">Alex Developer</p>
-              <p className="text-[11px] text-slate-400 truncate">alex@taskflow.com</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-slate-800 truncate">
+                  {user?.name || 'TaskFlow User'}
+                </p>
+                {user?.role === 'ADMIN' && (
+                  <span
+                    title="Administrator"
+                    className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800"
+                  >
+                    <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
+                    ADMIN
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 truncate">
+                {user?.email || 'Authenticated'}
+              </p>
             </div>
           </div>
-          <Link
-            href="/login"
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition-colors"
+          <button
+            onClick={logout}
+            className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
             title="Sign out"
+            aria-label="Sign out"
           >
             <LogOut className="w-4 h-4" />
-          </Link>
+          </button>
         </div>
       </div>
     </aside>

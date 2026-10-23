@@ -7,10 +7,24 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   helperText?: string;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
+  rightElement?: React.ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, leftIcon, rightIcon, className, id, ...props }, ref) => {
+  (
+    {
+      label,
+      error,
+      helperText,
+      leftIcon,
+      rightIcon,
+      rightElement,
+      className,
+      id,
+      ...props
+    },
+    ref
+  ) => {
     const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
     return (
@@ -35,7 +49,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               'border-slate-300 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
               'disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-200 disabled:cursor-not-allowed',
               leftIcon ? 'pl-9' : '',
-              rightIcon ? 'pr-9' : '',
+              rightIcon || rightElement ? 'pr-10' : '',
               error
                 ? 'border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 placeholder:text-red-300'
                 : '',
@@ -43,9 +57,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             )}
             {...props}
           />
-          {rightIcon && (
+          {rightIcon && !rightElement && (
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
               {rightIcon}
+            </div>
+          )}
+          {rightElement && (
+            <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+              {rightElement}
             </div>
           )}
         </div>

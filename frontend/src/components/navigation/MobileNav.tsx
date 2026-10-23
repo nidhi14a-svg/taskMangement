@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/common/Button';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface MobileNavProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   onCreateTask,
 }) => {
   const pathname = usePathname();
+  const { logout } = useAuth();
 
   if (!isOpen) return null;
 
@@ -59,7 +61,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               aria-label="Close menu"
             >
               <X className="w-5 h-5" />
@@ -119,14 +121,16 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             <FileCode className="w-4 h-4 text-slate-400" />
             Swagger Docs
           </a>
-          <Link
-            href="/login"
-            onClick={onClose}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50"
+          <button
+            onClick={() => {
+              onClose();
+              logout();
+            }}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 cursor-pointer text-left"
           >
             <LogOut className="w-4 h-4" />
             Sign Out
-          </Link>
+          </button>
         </div>
       </div>
     </div>
