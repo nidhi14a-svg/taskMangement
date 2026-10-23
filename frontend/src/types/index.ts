@@ -26,6 +26,24 @@ export interface Task {
   updated_at: string;
 }
 
+export interface TaskCreatePayload {
+  title: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  due_date?: string | null;
+  assignee_id?: string | null;
+}
+
+export interface TaskUpdatePayload {
+  title?: string;
+  description?: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  due_date?: string | null;
+  assignee_id?: string | null;
+}
+
 export interface TaskPaginationResponse {
   items: Task[];
   total: number;
