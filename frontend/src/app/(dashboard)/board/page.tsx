@@ -20,6 +20,7 @@ import { userService } from '@/api/services/userService';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getTaskPermissions } from '@/utils/permissions';
 import { Task, TaskStatus, User } from '@/types';
+import { extractErrorMessage } from '@/utils/formatters';
 
 interface ColumnDef {
   id: TaskStatus;
@@ -100,7 +101,7 @@ export default function BoardPage() {
     } catch (err: any) {
       setTasks([]);
       setErrorBanner(
-        err?.response?.data?.detail || 'Failed to load Kanban tasks. Please check your connection.'
+        extractErrorMessage(err?.response?.data?.detail, 'Failed to load Kanban tasks. Please check your connection.')
       );
     } finally {
       setIsLoading(false);
@@ -152,7 +153,7 @@ export default function BoardPage() {
     } catch (err: any) {
       // Revert on error
       fetchTasks();
-      alert(err?.response?.data?.detail || 'Failed to update task status.');
+      alert(extractErrorMessage(err?.response?.data?.detail, 'Failed to update task status.'));
     }
   };
 

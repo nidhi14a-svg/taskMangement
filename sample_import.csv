@@ -1,0 +1,6 @@
+Full Name,Work Email,User Role,Designation,Department
+Grace Hopper,grace.hopper@taskflow-import.com,Team Lead,Systems Architect,Engineering
+Ada Lovelace,ada.lovelace@taskflow-import.com,Employee,Algorithm Engineer,Engineering
+Alan Turing,alan.turing@taskflow-import.com,Employee,Cryptanalyst,Security
+Invalid User,,Employee,Junior Dev,Engineering
+Bad Role Person,bad.role@taskflow-import.com,SuperUser,Manager,Operations

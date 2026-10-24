@@ -1,18 +1,19 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Menu,
   Plus,
-  Bell,
   User as UserIcon,
   LogOut,
   Shield,
+  ShieldCheck,
   ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/common/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 export interface HeaderProps {
   onToggleMobileNav?: () => void;
@@ -24,14 +25,19 @@ export const Header: React.FC<HeaderProps> = ({
   onCreateTask,
 }) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const currentPath = pathname || '';
+  const currentFilter = searchParams ? searchParams.get('filter') : null;
   const { user, logout } = useAuth();
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setDropdownOpen(false);
       }
     };
@@ -41,7 +47,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   const getPageTitle = () => {
     if (currentPath.includes('/dashboard')) return 'Dashboard';
-    if (currentPath.includes('/tasks')) return 'Task Management';
+    if (currentPath.includes('/employees')) return 'Employee Management';
+    if (currentPath.includes('/tasks')) {
+      return currentFilter === 'assigned' ? 'Assigned to Me' : 'My Tasks';
+    }
     if (currentPath.includes('/board')) return 'Kanban Board';
     return 'TaskFlow';
   };
@@ -49,8 +58,13 @@ export const Header: React.FC<HeaderProps> = ({
   const getPageSubtitle = () => {
     if (currentPath.includes('/dashboard'))
       return 'System metrics, completion rates, and project overview';
-    if (currentPath.includes('/tasks'))
-      return 'Manage, prioritize, and filter your team deliverables';
+    if (currentPath.includes('/employees'))
+      return 'Organization employee directory, role permissions, and CSV bulk onboarding';
+    if (currentPath.includes('/tasks')) {
+      return currentFilter === 'assigned'
+        ? 'Deliverables allotted and assigned to you'
+        : 'Manage and prioritize your team deliverables';
+    }
     if (currentPath.includes('/board'))
       return 'Visual lifecycle workflow: TODO, IN_PROGRESS, and COMPLETED';
     return 'Production Task Management System';
@@ -92,14 +106,8 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="hidden sm:inline">New Task</span>
         </Button>
 
-        {/* Notification Bell */}
-        <button
-          className="relative p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          aria-label="Notifications"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-600 rounded-full ring-2 ring-white" />
-        </button>
+        {/* Real-time Notification Bell */}
+        <NotificationBell />
 
         <div className="h-6 w-px bg-slate-200 mx-1 hidden sm:block" />
 
@@ -130,6 +138,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <p className="text-[11px] text-slate-500 truncate mt-0.5">
                   {user?.email}
                 </p>
+                {(user?.position || user?.department) && (
+                  <p className="text-[10px] text-indigo-600 truncate font-medium mt-0.5">
+                    {[user.position, user.department].filter(Boolean).join(' • ')}
+                  </p>
+                )}
                 <div className="mt-1.5">
                   <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                     {user?.role === 'ADMIN' ? (
@@ -137,8 +150,13 @@ export const Header: React.FC<HeaderProps> = ({
                         <Shield className="w-3 h-3 mr-1 text-amber-600" />
                         Admin
                       </>
+                    ) : user?.role === 'TEAM_LEAD' ? (
+                      <>
+                        <ShieldCheck className="w-3 h-3 mr-1 text-indigo-600" />
+                        Team Lead
+                      </>
                     ) : (
-                      'Team Member'
+                      'Employee'
                     )}
                   </span>
                 </div>

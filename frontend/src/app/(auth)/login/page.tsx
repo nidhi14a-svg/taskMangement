@@ -7,6 +7,7 @@ import { Lock, Mail, ArrowRight, Eye, EyeOff, AlertCircle, CheckCircle2 } from '
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { extractErrorMessage } from '@/utils/formatters';
 
 function LoginForm() {
   const router = useRouter();
@@ -71,8 +72,10 @@ function LoginForm() {
         );
       } else {
         setErrorMessage(
-          err?.response?.data?.detail ||
+          extractErrorMessage(
+            err?.response?.data?.detail,
             'An unexpected error occurred during sign in. Please try again.'
+          )
         );
       }
     } finally {

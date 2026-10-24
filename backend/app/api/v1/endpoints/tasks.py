@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timezone
 from typing import Optional, Any
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.database import get_database
@@ -18,6 +18,7 @@ from app.schemas.task import (
 )
 from app.schemas.user import UserResponse
 from app.api.dependencies import get_current_user
+from app.services.notification_service import NotificationService
 
 router = APIRouter()
 
@@ -34,6 +35,7 @@ ALLOWED_SORT_FIELDS = {"due_date", "created_at", "updated_at", "title", "priorit
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 async def create_task(
     payload: TaskCreate,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncDatabase = Depends(get_database),
     current_user: UserResponse = Depends(get_current_user),
 ) -> TaskResponse:
@@ -42,8 +44,10 @@ async def create_task(
     - Sets creator_id exclusively from authenticated user token.
     - Validates that assignee_id exists in the users collection if provided.
     - Assigns UTC timestamps.
+    - Triggers in-app notification and email alert to the assignee.
     """
     assignee_oid: Optional[ObjectId] = None
+    assignee_doc: Optional[dict[str, Any]] = None
     if payload.assignee_id is not None:
         assignee_oid = ObjectId(payload.assignee_id)
         assignee_doc = await db[USERS_COLLECTION].find_one({"_id": assignee_oid})
@@ -52,6 +56,17 @@ async def create_task(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Assignee user with ID '{payload.assignee_id}' does not exist.",
             )
+
+        # TEAM_LEAD can only assign tasks within their department/team
+        if current_user.role == UserRole.TEAM_LEAD:
+            lead_dept = (current_user.department or "").strip().lower()
+            assignee_dept = (assignee_doc.get("department") or "").strip().lower()
+            is_self = str(assignee_doc["_id"]) == str(current_user.id)
+            if not is_self and (not lead_dept or lead_dept != assignee_dept):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Team leads can only assign tasks to members of their department/team.",
+                )
 
     now = datetime.now(timezone.utc)
     new_task_id = ObjectId()
@@ -69,6 +84,21 @@ async def create_task(
     }
 
     await db[TASKS_COLLECTION].insert_one(task_doc)
+
+    # Trigger notification and email alert if an employee was assigned
+    if assignee_doc:
+        try:
+            await NotificationService.notify_task_assignment(
+                db=db,
+                task_doc=task_doc,
+                assigner=current_user,
+                assignee_doc=assignee_doc,
+                background_tasks=background_tasks,
+            )
+        except Exception as e:
+            # Task must be preserved even if notification/email encounters an issue
+            pass
+
     return TaskResponse.model_validate(task_doc)
 
 
@@ -82,7 +112,8 @@ async def create_task(
 async def list_tasks(
     search: Optional[str] = Query(None, description="Case-insensitive title search"),
     status_filter: Optional[TaskStatus] = Query(None, alias="status", description="Filter by status (TODO, IN_PROGRESS, COMPLETED)"),
-    priority_filter: Optional[TaskPriority] = Query(None, alias="priority", description="Filter by priority (LOW, MEDIUM, HIGH)"),
+    priority_filter: Optional[TaskPriority] = Query(None, alias="priority", description="Filter by priority (LOW, MEDIUM, HIGH, URGENT)"),
+    filter_type: Optional[str] = Query(None, alias="filter", description="Filter by relationship ('created' or 'assigned')"),
     sort_by: Optional[str] = Query("created_at", description="Field to sort by (e.g. due_date, created_at, title)"),
     sort_order: Optional[str] = Query("desc", description="Sort direction ('asc' or 'desc')"),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
@@ -93,16 +124,41 @@ async def list_tasks(
     """
     Lists tasks with authorization and MongoDB querying:
     - ADMIN can view all tasks in the system.
-    - USER can only view tasks they created or are assigned to.
+    - TEAM_LEAD views tasks within their authorized department team.
+    - EMPLOYEE/USER can only view tasks they created or are assigned to.
+    - Supports filtering by 'created' (created by current user) or 'assigned' (assigned to current user).
     - Filters by search regex, status, and priority.
     - Stable sorting with secondary tie-breaker on _id.
     - Returns pagination metadata.
     """
     query: dict[str, Any] = {}
 
-    # Authorization scope
-    if current_user.role != UserRole.ADMIN:
-        user_oid = ObjectId(current_user.id)
+    # Authorization and relationship scoping
+    user_oid = ObjectId(current_user.id)
+    if filter_type == "assigned":
+        query["assignee_id"] = user_oid
+    elif filter_type == "created":
+        query["creator_id"] = user_oid
+    elif current_user.role == UserRole.ADMIN:
+        # Admin can view all tasks in the system
+        pass
+    elif current_user.role == UserRole.TEAM_LEAD:
+        # Team lead sees all tasks created by or assigned to members of their department
+        lead_dept = (current_user.department or "").strip()
+        if lead_dept:
+            team_cursor = db[USERS_COLLECTION].find({"department": lead_dept}, {"_id": 1})
+            team_docs = await team_cursor.to_list(length=1000)
+            team_ids = [d["_id"] for d in team_docs] + [user_oid]
+            query["$or"] = [
+                {"creator_id": {"$in": team_ids}},
+                {"assignee_id": {"$in": team_ids}},
+            ]
+        else:
+            query["$or"] = [
+                {"creator_id": user_oid},
+                {"assignee_id": user_oid},
+            ]
+    else:
         query["$or"] = [
             {"creator_id": user_oid},
             {"assignee_id": user_oid},
@@ -144,6 +200,15 @@ async def list_tasks(
     )
 
 
+async def is_team_member(db: AsyncDatabase, member_oid: Optional[ObjectId], lead_dept: Optional[str]) -> bool:
+    if not member_oid or not lead_dept:
+        return False
+    user_doc = await db[USERS_COLLECTION].find_one({"_id": member_oid})
+    if not user_doc:
+        return False
+    return (user_doc.get("department") or "").strip().lower() == lead_dept.strip().lower()
+
+
 @router.get(
     "/{task_id}",
     response_model=TaskResponse,
@@ -158,7 +223,7 @@ async def get_task_by_id(
     """
     Retrieves task details:
     - Validates ObjectId format.
-    - Verifies user is ADMIN, creator, or assignee.
+    - Verifies user is ADMIN, creator, assignee, or TEAM_LEAD of the task's department.
     """
     if not ObjectId.is_valid(task_id):
         raise HTTPException(
@@ -177,8 +242,15 @@ async def get_task_by_id(
     is_admin = current_user.role == UserRole.ADMIN
     is_creator = str(task_doc["creator_id"]) == str(current_user.id)
     is_assignee = task_doc.get("assignee_id") is not None and str(task_doc["assignee_id"]) == str(current_user.id)
+    is_lead = (
+        current_user.role == UserRole.TEAM_LEAD
+        and (
+            await is_team_member(db, task_doc.get("creator_id"), current_user.department)
+            or await is_team_member(db, task_doc.get("assignee_id"), current_user.department)
+        )
+    )
 
-    if not (is_admin or is_creator or is_assignee):
+    if not (is_admin or is_creator or is_assignee or is_lead):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this task.",
@@ -196,6 +268,7 @@ async def get_task_by_id(
 async def update_task(
     task_id: str,
     payload: TaskUpdate,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncDatabase = Depends(get_database),
     current_user: UserResponse = Depends(get_current_user),
 ) -> TaskResponse:
@@ -223,9 +296,16 @@ async def update_task(
     is_admin = current_user.role == UserRole.ADMIN
     is_creator = str(task_doc["creator_id"]) == str(current_user.id)
     is_assignee = task_doc.get("assignee_id") is not None and str(task_doc["assignee_id"]) == str(current_user.id)
+    is_lead = (
+        current_user.role == UserRole.TEAM_LEAD
+        and (
+            await is_team_member(db, task_doc.get("creator_id"), current_user.department)
+            or await is_team_member(db, task_doc.get("assignee_id"), current_user.department)
+        )
+    )
 
     # Access control
-    if not (is_admin or is_creator or is_assignee):
+    if not (is_admin or is_creator or is_assignee or is_lead):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to modify this task.",
@@ -235,8 +315,8 @@ async def update_task(
     if not update_data:
         return TaskResponse.model_validate(task_doc)
 
-    # Restrict assignee updates to status only
-    if is_assignee and not is_creator and not is_admin:
+    # Restrict assignee updates to status only (unless user is also creator, team lead, or admin)
+    if is_assignee and not is_creator and not is_admin and not is_lead:
         disallowed_fields = set(update_data.keys()) - {"status"}
         if disallowed_fields:
             raise HTTPException(
@@ -254,6 +334,17 @@ async def update_task(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Assignee user with ID '{new_assignee_id}' does not exist.",
                 )
+
+            # TEAM_LEAD can only reassign to members of their department
+            if current_user.role == UserRole.TEAM_LEAD:
+                lead_dept = (current_user.department or "").strip().lower()
+                assignee_dept = (assignee_user.get("department") or "").strip().lower()
+                is_self = str(assignee_user["_id"]) == str(current_user.id)
+                if not is_self and (not lead_dept or lead_dept != assignee_dept):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Team leads can only assign tasks to members of their department/team.",
+                    )
 
     # Build $set update dictionary
     set_fields: dict[str, Any] = {}
@@ -273,6 +364,21 @@ async def update_task(
     )
 
     updated_task = await db[TASKS_COLLECTION].find_one({"_id": task_doc["_id"]})
+
+    # Trigger notifications if assignment, priority, or due date changed
+    if updated_task:
+        try:
+            await NotificationService.notify_task_updates(
+                db=db,
+                old_task=task_doc,
+                updated_task=updated_task,
+                modifier=current_user,
+                background_tasks=background_tasks,
+            )
+        except Exception:
+            # Preserves task update even if notification/email encounters an issue
+            pass
+
     return TaskResponse.model_validate(updated_task)
 
 
@@ -307,11 +413,15 @@ async def delete_task(
 
     is_admin = current_user.role == UserRole.ADMIN
     is_creator = str(task_doc["creator_id"]) == str(current_user.id)
+    is_lead_creator = (
+        current_user.role == UserRole.TEAM_LEAD
+        and await is_team_member(db, task_doc.get("creator_id"), current_user.department)
+    )
 
-    if not (is_admin or is_creator):
+    if not (is_admin or is_creator or is_lead_creator):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to delete this task. Only the creator or an administrator can delete tasks.",
+            detail="You do not have permission to delete this task. Only the creator, team lead, or an administrator can delete tasks.",
         )
 
     await db[TASKS_COLLECTION].delete_one({"_id": task_doc["_id"]})

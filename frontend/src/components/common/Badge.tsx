@@ -53,6 +53,10 @@ export const Badge: React.FC<BadgeProps> = ({
         styleClasses = 'bg-rose-50 text-rose-700 border-rose-200';
         dotColor = 'bg-rose-500';
         break;
+      case 'URGENT':
+        styleClasses = 'bg-red-100 text-red-800 border-red-300 font-semibold';
+        dotColor = 'bg-red-600 animate-pulse';
+        break;
     }
   } else {
     switch (variant) {

@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from bson import ObjectId
 from fastapi import APIRouter, Depends
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.database import get_database
 from app.models.task import TASKS_COLLECTION
+from app.models.user import USERS_COLLECTION
 from app.models.enums import UserRole, TaskStatus, TaskPriority
 from app.schemas.dashboard import DashboardSummaryResponse
 from app.schemas.user import UserResponse
@@ -26,17 +27,38 @@ async def get_dashboard_summary(
 ) -> DashboardSummaryResponse:
     """
     Computes dashboard analytics:
-    - ADMIN role: Global organization-wide metrics across all tasks.
-    - USER role: Scoped metrics for tasks created by or assigned to the user.
-    - Aggregation ensures tasks where user is both creator and assignee are counted once.
-    - Accurately identifies overdue tasks (due_date < now_utc and status != COMPLETED).
-    - Returns zero values and initialized breakdown dictionaries for empty collections.
+    - ADMIN role: Global organization-wide metrics + total employees.
+    - TEAM_LEAD role: Department team metrics + total team members.
+    - EMPLOYEE/USER role: Scoped metrics for tasks created by or assigned to user.
     """
     now_utc = datetime.now(timezone.utc)
 
-    # Define scope filter
+    # Define scope filter and employee/team counters
     base_match: dict[str, Any] = {}
-    if current_user.role != UserRole.ADMIN:
+    total_employees: Optional[int] = None
+    total_team_members: Optional[int] = None
+
+    if current_user.role == UserRole.ADMIN:
+        base_match = {}
+        total_employees = await db[USERS_COLLECTION].count_documents({})
+    elif current_user.role == UserRole.TEAM_LEAD:
+        lead_dept = (current_user.department or "").strip()
+        if lead_dept:
+            team_cursor = db[USERS_COLLECTION].find({"department": lead_dept}, {"_id": 1})
+            team_docs = await team_cursor.to_list(length=1000)
+            team_ids = [d["_id"] for d in team_docs] + [ObjectId(current_user.id)]
+            base_match = {
+                "$or": [
+                    {"creator_id": {"$in": team_ids}},
+                    {"assignee_id": {"$in": team_ids}},
+                ]
+            }
+            total_team_members = len(team_docs)
+        else:
+            user_oid = ObjectId(current_user.id)
+            base_match = {"$or": [{"creator_id": user_oid}, {"assignee_id": user_oid}]}
+            total_team_members = 1
+    else:
         user_oid = ObjectId(current_user.id)
         base_match = {
             "$or": [
@@ -159,4 +181,7 @@ async def get_dashboard_summary(
         status_breakdown=status_breakdown,
         priority_breakdown=priority_breakdown,
         completion_rate=completion_rate,
+        total_employees=total_employees,
+        total_team_members=total_team_members,
+        department=current_user.department,
     )

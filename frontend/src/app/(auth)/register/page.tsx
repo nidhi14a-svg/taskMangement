@@ -15,12 +15,28 @@ import {
   EyeOff,
   AlertCircle,
   Check,
+  Briefcase,
+  Building2,
+  KeyRound,
+  ShieldCheck,
+  Users,
 } from 'lucide-react';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
+import { extractErrorMessage } from '@/utils/formatters';
 import { useAuth } from '@/hooks/useAuth';
 
-// Zod validation schema matching backend Pydantic constraints
+const DEPARTMENTS = [
+  'Engineering',
+  'Product',
+  'Design',
+  'Marketing',
+  'Sales',
+  'Operations',
+  'Customer Support',
+];
+
+// Zod validation schema matching backend constraints and role requirements
 const registerSchema = z
   .object({
     name: z
@@ -33,6 +49,10 @@ const registerSchema = z
       .trim()
       .min(1, 'Email address is required')
       .email('Please enter a valid email address'),
+    role: z.enum(['EMPLOYEE', 'TEAM_LEAD']),
+    department: z.string().trim().optional(),
+    position: z.string().trim().optional(),
+    invite_code: z.string().trim().optional(),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters long')
@@ -42,9 +62,21 @@ const registerSchema = z
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
     path: ['confirmPassword'],
-  });
+  })
+  .refine(
+    (data) => {
+      if (data.role === 'TEAM_LEAD' && (!data.invite_code || data.invite_code.trim() === '')) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'An approved invitation code is required for Team Lead registration',
+      path: ['invite_code'],
+    }
+  );
 
-type RegisterFormData = z.infer<typeof registerSchema>;
+export type RegisterFormData = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -66,6 +98,7 @@ export default function RegisterPage() {
     handleSubmit,
     setError,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -73,15 +106,20 @@ export default function RegisterPage() {
     defaultValues: {
       name: '',
       email: '',
+      role: 'EMPLOYEE',
+      department: 'Engineering',
+      position: '',
+      invite_code: '',
       password: '',
       confirmPassword: '',
     },
   });
 
+  const selectedRole = watch('role', 'EMPLOYEE');
   const watchedPassword = watch('password', '');
   const watchedConfirmPassword = watch('confirmPassword', '');
 
-  // Dynamic password criteria checks for enhanced user feedback
+  // Dynamic password criteria checks
   const hasMinLength = watchedPassword.length >= 8;
   const passwordsMatch =
     watchedPassword.length > 0 &&
@@ -92,22 +130,34 @@ export default function RegisterPage() {
     setServerError(null);
 
     try {
-      // Public registration strictly excludes any role parameter
       await registerUser({
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         password: data.password,
+        role: data.role,
+        department: data.department?.trim() || undefined,
+        position: data.position?.trim() || undefined,
+        invite_code: data.role === 'TEAM_LEAD' ? data.invite_code?.trim() : undefined,
       });
 
       // On successful registration, redirect to login page with success notification
       router.push('/login?registered=true');
     } catch (err: any) {
       if (err?.response?.status === 409) {
-        // Backend DuplicateKeyError on email
-        const message =
-          err?.response?.data?.detail ||
-          'A user with this email address already exists.';
+        const message = extractErrorMessage(
+          err?.response?.data?.detail,
+          'A user with this email address already exists.'
+        );
         setError('email', { type: 'manual', message });
+        setServerError(message);
+      } else if (err?.response?.status === 403) {
+        const message = extractErrorMessage(
+          err?.response?.data?.detail,
+          'Team Lead registration requires a valid invitation code. Public admin registration is strictly prohibited.'
+        );
+        if (data.role === 'TEAM_LEAD') {
+          setError('invite_code', { type: 'manual', message });
+        }
         setServerError(message);
       } else if (err?.code === 'ERR_NETWORK' || !err?.response) {
         setServerError(
@@ -115,8 +165,10 @@ export default function RegisterPage() {
         );
       } else {
         setServerError(
-          err?.response?.data?.detail ||
+          extractErrorMessage(
+            err?.response?.data?.detail,
             'Registration failed. Please verify your details or use a different email.'
+          )
         );
       }
     }
@@ -183,6 +235,124 @@ export default function RegisterPage() {
           leftIcon={<Mail className="w-4 h-4" />}
           disabled={isSubmitting}
         />
+
+        {/* Role Selector with Descriptions */}
+        <div className="space-y-2">
+          <label className="block text-xs font-semibold text-slate-700">
+            Account Role <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* EMPLOYEE Option */}
+            <div
+              onClick={() => setValue('role', 'EMPLOYEE')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                selectedRole === 'EMPLOYEE'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
+                  : 'border-slate-200 hover:border-slate-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Users
+                  className={`w-4 h-4 ${
+                    selectedRole === 'EMPLOYEE' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span className="text-xs font-bold text-slate-900">Employee</span>
+                {selectedRole === 'EMPLOYEE' && (
+                  <span className="ml-auto w-2 h-2 rounded-full bg-indigo-600" />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Standard team member. View assigned tasks, track deadlines, and update status.
+              </p>
+            </div>
+
+            {/* TEAM_LEAD Option */}
+            <div
+              onClick={() => setValue('role', 'TEAM_LEAD')}
+              className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                selectedRole === 'TEAM_LEAD'
+                  ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600'
+                  : 'border-slate-200 hover:border-slate-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <ShieldCheck
+                  className={`w-4 h-4 ${
+                    selectedRole === 'TEAM_LEAD' ? 'text-indigo-600' : 'text-slate-400'
+                  }`}
+                />
+                <span className="text-xs font-bold text-slate-900">Team Lead</span>
+                {selectedRole === 'TEAM_LEAD' && (
+                  <span className="ml-auto w-2 h-2 rounded-full bg-indigo-600" />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Department lead. Manage team tasks and assign work. Requires invite code.
+              </p>
+            </div>
+          </div>
+          {/* Explicit note on Admin security */}
+          <p className="text-[10px] text-slate-400 italic">
+            Administrator accounts cannot be self-registered and are provisioned securely via system administrator credentials.
+          </p>
+        </div>
+
+        {/* Conditional Invite Code Input for Team Lead */}
+        {selectedRole === 'TEAM_LEAD' && (
+          <Input
+            id="invite-code-input"
+            label="Team Lead Invitation Code"
+            type="text"
+            required
+            placeholder="e.g. SWAN-LEAD-2026 or admin invite token"
+            {...register('invite_code')}
+            error={errors.invite_code?.message}
+            leftIcon={<KeyRound className="w-4 h-4 text-amber-500" />}
+            disabled={isSubmitting}
+            helperText="Provided by your organization administrator or assessment instructions."
+          />
+        )}
+
+        {/* Department & Job Position Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label
+              htmlFor="department-select"
+              className="block text-xs font-semibold text-slate-700 mb-1"
+            >
+              Department
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <select
+                id="department-select"
+                {...register('department')}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                disabled={isSubmitting}
+              >
+                {DEPARTMENTS.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <Input
+            id="position-input"
+            label="Job Position"
+            type="text"
+            placeholder="e.g. Frontend Engineer"
+            {...register('position')}
+            error={errors.position?.message}
+            leftIcon={<Briefcase className="w-4 h-4" />}
+            disabled={isSubmitting}
+          />
+        </div>
 
         {/* Password */}
         <Input

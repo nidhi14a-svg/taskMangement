@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { taskService } from '@/api/services/taskService';
 import { Task } from '@/types';
 import { AlertTriangle } from 'lucide-react';
+import { extractErrorMessage } from '@/utils/formatters';
 
 export interface DeleteTaskDialogProps {
   isOpen: boolean;
@@ -40,8 +41,10 @@ export const DeleteTaskDialog: React.FC<DeleteTaskDialogProps> = ({
       onClose();
     } catch (err: any) {
       setError(
-        err?.response?.data?.detail ||
+        extractErrorMessage(
+          err?.response?.data?.detail,
           'Failed to delete task. Ensure you have administrator or creator permissions.'
+        )
       );
     } finally {
       setIsDeleting(false);

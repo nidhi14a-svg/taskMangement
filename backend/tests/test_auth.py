@@ -42,7 +42,7 @@ def test_register_success(client: TestClient):
     assert "_id" in data or "id" in data
     assert data["name"] == "Jane Developer"
     assert data["email"] == email.lower()
-    assert data["role"] == UserRole.USER.value
+    assert data["role"] in (UserRole.EMPLOYEE.value, UserRole.USER.value)
     assert "created_at" in data
     assert "updated_at" in data
 
@@ -82,8 +82,7 @@ def test_register_duplicate_email_conflict(client: TestClient):
 
 def test_register_cannot_create_admin(client: TestClient):
     """
-    Test that public registration strictly assigns USER role and ignores
-    any client attempt to assign ADMIN role.
+    Test that attempts to self-register as ADMIN are strictly rejected with HTTP 403 Forbidden.
     """
     email = get_random_email()
     payload = {
@@ -94,10 +93,8 @@ def test_register_cannot_create_admin(client: TestClient):
     }
 
     response = client.post("/api/v1/auth/register", json=payload)
-    assert response.status_code == 201
-    data = response.json()
-    # Must remain USER
-    assert data["role"] == UserRole.USER.value
+    assert response.status_code == 403
+    assert "admin" in response.json()["detail"].lower()
 
 
 def test_register_input_validation(client: TestClient):
@@ -158,7 +155,7 @@ def test_login_success(client: TestClient):
     assert data["token_type"] == "bearer"
     assert "user" in data
     assert data["user"]["email"] == email.lower()
-    assert data["user"]["role"] == UserRole.USER.value
+    assert data["user"]["role"] in (UserRole.EMPLOYEE.value, UserRole.USER.value)
     assert "password_hash" not in data["user"]
 
 
@@ -241,7 +238,7 @@ def test_me_success_with_valid_token(client: TestClient):
     me_data = me_resp.json()
     assert me_data["name"] == "Profile Owner"
     assert me_data["email"] == email.lower()
-    assert me_data["role"] == UserRole.USER.value
+    assert me_data["role"] in (UserRole.EMPLOYEE.value, UserRole.USER.value)
     assert "password_hash" not in me_data
 
 

@@ -1,5 +1,7 @@
 from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 from app.services.task_service import TaskService
+from app.services.csv_service import CsvService
+from app.services.email_service import EmailService
 
-__all__ = ["AuthService", "UserService", "TaskService"]
+__all__ = ["AuthService", "UserService", "TaskService", "CsvService", "EmailService"]

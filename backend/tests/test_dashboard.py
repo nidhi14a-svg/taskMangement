@@ -83,7 +83,7 @@ def test_dashboard_summary_empty_state(client: TestClient):
 
     # Ensure all breakdown keys are present with 0
     assert data["status_breakdown"] == {"TODO": 0, "IN_PROGRESS": 0, "COMPLETED": 0}
-    assert data["priority_breakdown"] == {"LOW": 0, "MEDIUM": 0, "HIGH": 0}
+    assert data["priority_breakdown"] == {"LOW": 0, "MEDIUM": 0, "HIGH": 0, "URGENT": 0}
 
 
 def test_dashboard_summary_calculation_accuracy(client: TestClient):

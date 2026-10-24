@@ -293,6 +293,41 @@ def test_list_tasks_scoping_and_visibility(client: TestClient):
     assert list_admin["total"] >= 2
 
 
+def test_list_tasks_created_and_assigned_filters(client: TestClient):
+    """Test filtering by created (creator_id) vs assigned (assignee_id)."""
+    _, user_a_token, user_a = create_test_user(client, "Creator User")
+    _, user_b_token, user_b = create_test_user(client, "Assignee User")
+    user_b_id = user_b.get("_id") or user_b.get("id")
+
+    # User A creates a task assigned to User B
+    tag_ab = uuid.uuid4().hex[:6]
+    client.post(
+        "/api/v1/tasks",
+        json={"title": f"Task from A to B {tag_ab}", "assignee_id": user_b_id},
+        headers={"Authorization": f"Bearer {user_a_token}"},
+    )
+
+    # User B creates a task for themselves
+    tag_b = uuid.uuid4().hex[:6]
+    client.post(
+        "/api/v1/tasks",
+        json={"title": f"Task created by B {tag_b}"},
+        headers={"Authorization": f"Bearer {user_b_token}"},
+    )
+
+    # User B checks "assigned to me" -> should only see task from A to B
+    resp_b_assigned = client.get("/api/v1/tasks?filter=assigned", headers={"Authorization": f"Bearer {user_b_token}"}).json()
+    assigned_titles = [t["title"] for t in resp_b_assigned["items"]]
+    assert any(f"Task from A to B {tag_ab}" in t for t in assigned_titles)
+    assert not any(f"Task created by B {tag_b}" in t for t in assigned_titles)
+
+    # User B checks "created by me" (My Tasks) -> should only see task created by B
+    resp_b_created = client.get("/api/v1/tasks?filter=created", headers={"Authorization": f"Bearer {user_b_token}"}).json()
+    created_titles = [t["title"] for t in resp_b_created["items"]]
+    assert any(f"Task created by B {tag_b}" in t for t in created_titles)
+    assert not any(f"Task from A to B {tag_ab}" in t for t in created_titles)
+
+
 def test_list_tasks_search_and_filters(client: TestClient):
     """Test case-insensitive search, status, and priority filtering."""
     _, token, _ = create_test_user(client, "Filter Tester")

@@ -10,7 +10,6 @@ import {
   Kanban,
   X,
   Plus,
-  FileCode,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
@@ -35,7 +34,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'My Tasks', href: '/tasks', icon: CheckSquare },
+    { name: 'My Tasks', href: '/tasks?filter=created', icon: CheckSquare },
     { name: 'Assigned to Me', href: '/tasks?filter=assigned', icon: UserCheck },
     { name: 'Kanban Board', href: '/board', icon: Kanban },
   ];
@@ -112,15 +111,6 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         </div>
 
         <div className="pt-4 border-t border-slate-100 space-y-3">
-          <a
-            href="http://127.0.0.1:8000/api/v1/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 hover:bg-slate-50"
-          >
-            <FileCode className="w-4 h-4 text-slate-400" />
-            Swagger Docs
-          </a>
           <button
             onClick={() => {
               onClose();

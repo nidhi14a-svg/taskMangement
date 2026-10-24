@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Union, Optional
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,10 +17,22 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "development_secret_key_change_in_production_min_32_chars_long"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    TEAM_LEAD_INVITE_CODE: str = "SWAN-LEAD-2026"
 
     # MongoDB Configuration
     MONGODB_URI: str = "mongodb://127.0.0.1:27017"
     MONGODB_DB_NAME: str = "taskflow_db"
+
+    # Optional Email / SMTP Configuration
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAILS_FROM_EMAIL: Optional[str] = "no-reply@taskflow.dev"
+    SMTP_FROM_EMAIL: Optional[str] = None
+    EMAILS_FROM_NAME: Optional[str] = "TaskFlow"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [

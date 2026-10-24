@@ -87,3 +87,38 @@ async def require_admin(
             detail="Administrator permissions required to perform this action.",
         )
     return current_user
+
+
+async def require_team_lead(
+    current_user: UserResponse = Depends(get_current_user),
+) -> UserResponse:
+    """
+    Dependency enforcing TEAM_LEAD or ADMIN role access control.
+    Returns HTTP 403 Forbidden for users lacking TEAM_LEAD or ADMIN role.
+    """
+    if current_user.role not in (UserRole.ADMIN, UserRole.TEAM_LEAD):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Team Lead or Administrator permissions required to perform this action.",
+        )
+    return current_user
+
+
+def require_roles(*allowed_roles: UserRole):
+    """
+    Factory dependency checking that user has one of allowed roles.
+    ADMIN is always granted access.
+    """
+    async def role_checker(
+        current_user: UserResponse = Depends(get_current_user),
+    ) -> UserResponse:
+        user_role = UserRole.EMPLOYEE if current_user.role == UserRole.USER else current_user.role
+        allowed = {UserRole.EMPLOYEE if r == UserRole.USER else r for r in allowed_roles}
+        if current_user.role != UserRole.ADMIN and user_role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Requires one of roles: {[r.value for r in allowed_roles]}.",
+            )
+        return current_user
+
+    return role_checker

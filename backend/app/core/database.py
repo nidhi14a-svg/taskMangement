@@ -7,6 +7,7 @@ from pymongo.errors import PyMongoError, ServerSelectionTimeoutError, Connection
 from app.core.config import settings
 from app.models.user import USERS_COLLECTION
 from app.models.task import TASKS_COLLECTION
+from app.models.notification import NOTIFICATIONS_COLLECTION
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,21 @@ async def init_db_indexes(db: AsyncDatabase) -> None:
         await db[TASKS_COLLECTION].create_index([("priority", 1)], name="idx_tasks_priority")
         await db[TASKS_COLLECTION].create_index([("due_date", 1)], name="idx_tasks_due_date")
         logger.info("MongoDB indexes verified: tasks (creator_id, assignee_id, status, priority, due_date)")
+
+        # 3. Indexes on notifications collection
+        await db[NOTIFICATIONS_COLLECTION].create_index(
+            [("recipient_id", 1), ("is_read", 1), ("created_at", -1)],
+            name="idx_notifications_recipient_unread",
+        )
+        await db[NOTIFICATIONS_COLLECTION].create_index(
+            [("recipient_id", 1), ("created_at", -1)],
+            name="idx_notifications_recipient_created",
+        )
+        await db[NOTIFICATIONS_COLLECTION].create_index(
+            [("task_id", 1)],
+            name="idx_notifications_task_id",
+        )
+        logger.info("MongoDB indexes verified: notifications (recipient_id, is_read, created_at, task_id)")
     except Exception as exc:
         logger.error(f"Error ensuring MongoDB indexes: {exc.__class__.__name__}")
 

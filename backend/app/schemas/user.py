@@ -3,13 +3,14 @@ from typing import Optional, Any
 from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from app.core.object_id import PyObjectId
-from app.models.enums import UserRole
+from app.models.enums import UserRole, AccountStatus
 
 
 class UserRegisterRequest(BaseModel):
     """
-    Schema for public user registration.
-    Excludes role field to guarantee public registration can NEVER assign ADMIN privileges.
+    Schema for user registration.
+    Allows specifying role (EMPLOYEE or TEAM_LEAD with invite code), position, and department.
+    Guarantees public registration can NEVER assign ADMIN privileges.
     """
 
     name: str = Field(..., min_length=1, max_length=255, description="Full display name")
@@ -20,6 +21,10 @@ class UserRegisterRequest(BaseModel):
         max_length=128,
         description="Plaintext password, minimum 8 characters",
     )
+    role: Optional[UserRole] = Field(default=UserRole.EMPLOYEE, description="Desired role (EMPLOYEE or TEAM_LEAD)")
+    position: Optional[str] = Field(None, max_length=100, description="Job position (e.g. Frontend Developer)")
+    department: Optional[str] = Field(None, max_length=100, description="Department (e.g. Engineering)")
+    invite_code: Optional[str] = Field(None, description="Required invitation code for TEAM_LEAD registration")
 
     @field_validator("email", mode="before")
     @classmethod
@@ -37,6 +42,14 @@ class UserRegisterRequest(BaseModel):
             v = v.strip()
         if not v:
             raise ValueError("Name cannot be empty or blank.")
+        return v
+
+    @field_validator("position", "department", mode="before")
+    @classmethod
+    def trim_optional_fields(cls, v: Any) -> Optional[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            return v if v else None
         return v
 
 
@@ -59,7 +72,10 @@ class UserBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     email: EmailStr
-    role: UserRole = Field(default=UserRole.USER)
+    role: UserRole = Field(default=UserRole.EMPLOYEE)
+    position: Optional[str] = Field(None, max_length=100)
+    department: Optional[str] = Field(None, max_length=100)
+    status: AccountStatus = Field(default=AccountStatus.ACTIVE)
 
     @field_validator("email", mode="before")
     @classmethod
@@ -90,6 +106,9 @@ class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None
+    position: Optional[str] = Field(None, max_length=100)
+    department: Optional[str] = Field(None, max_length=100)
+    status: Optional[AccountStatus] = None
     password: Optional[str] = Field(None, min_length=8, max_length=128)
 
     @field_validator("email", mode="before")
@@ -116,7 +135,12 @@ class UserInDB(BaseModel):
     name: str
     email: str
     password_hash: str
-    role: UserRole = UserRole.USER
+    role: UserRole = UserRole.EMPLOYEE
+    position: Optional[str] = None
+    department: Optional[str] = None
+    status: AccountStatus = AccountStatus.ACTIVE
+    activation_token: Optional[str] = None
+    activation_token_expires_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -133,8 +157,51 @@ class UserResponse(BaseModel):
     name: str
     email: str
     role: UserRole
+    position: Optional[str] = None
+    department: Optional[str] = None
+    status: AccountStatus = AccountStatus.ACTIVE
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
+
+
+class AccountActivateRequest(BaseModel):
+    """Schema for an invited employee to set their password and activate their account."""
+
+    token: str = Field(..., min_length=1, description="Unique account activation token")
+    password: str = Field(..., min_length=8, max_length=128, description="New secure password")
+
+
+class AccountActivateVerifyResponse(BaseModel):
+    """Details returned when validating an activation token."""
+
+    valid: bool
+    email: Optional[str] = None
+    name: Optional[str] = None
+    message: Optional[str] = None
+
+
+class InvitationCreateRequest(BaseModel):
+    """Request to generate an approved invitation code for a Team Lead."""
+
+    department: str = Field(..., min_length=1, max_length=100, description="Department for the team lead")
+    role: UserRole = Field(default=UserRole.TEAM_LEAD, description="Role permitted by this invitation")
+
+
+class InvitationResponse(BaseModel):
+    """Details of a generated invitation."""
+
+    id: PyObjectId = Field(alias="_id")
+    code: str
+    role: UserRole
+    department: str
+    created_by: str
+    is_used: bool = False
+    created_at: datetime
 
     model_config = ConfigDict(
         populate_by_name=True,

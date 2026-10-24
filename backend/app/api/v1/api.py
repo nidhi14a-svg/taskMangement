@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.core.config import settings
 from app.core.database import check_mongo_connection
 from app.schemas.health import HealthCheckResponse
-from app.api.v1.endpoints import auth, users, tasks, dashboard
+from app.api.v1.endpoints import auth, users, tasks, dashboard, employees, notifications
 
 api_router = APIRouter()
 
@@ -30,5 +30,7 @@ async def api_v1_health() -> HealthCheckResponse:
 # Mount feature routers under /api/v1
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(users.router, prefix="/users", tags=["Users"])
+api_router.include_router(employees.router, prefix="/employees", tags=["Employees"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
+api_router.include_router(notifications.router, prefix="", tags=["Notifications"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])

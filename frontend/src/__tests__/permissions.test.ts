@@ -85,6 +85,45 @@ describe('getTaskPermissions', () => {
     expect(permissions.canAnyEdit).toBe(false);
   });
 
+  it('grants edit and delete permissions to TEAM_LEAD within matching department', () => {
+    const teamLeadUser: User = {
+      id: 'lead-1',
+      name: 'Lead User',
+      email: 'lead@taskflow.com',
+      role: 'TEAM_LEAD',
+      department: 'Engineering',
+      created_at: '',
+      updated_at: '',
+    };
+    const deptTask: Task = {
+      ...sampleTask,
+      department: 'Engineering',
+    };
+    const permissions = getTaskPermissions(deptTask, teamLeadUser);
+    expect(permissions.isTeamLead).toBe(true);
+    expect(permissions.canEditAll).toBe(true);
+    expect(permissions.canDelete).toBe(true);
+  });
+
+  it('denies edit and delete permissions to TEAM_LEAD for tasks in other departments', () => {
+    const teamLeadUser: User = {
+      id: 'lead-1',
+      name: 'Lead User',
+      email: 'lead@taskflow.com',
+      role: 'TEAM_LEAD',
+      department: 'Engineering',
+      created_at: '',
+      updated_at: '',
+    };
+    const otherDeptTask: Task = {
+      ...sampleTask,
+      department: 'Marketing',
+    };
+    const permissions = getTaskPermissions(otherDeptTask, teamLeadUser);
+    expect(permissions.canEditAll).toBe(false);
+    expect(permissions.canDelete).toBe(false);
+  });
+
   it('returns all false when task or user is null', () => {
     const permissions = getTaskPermissions(null, null);
     expect(permissions.canAnyEdit).toBe(false);

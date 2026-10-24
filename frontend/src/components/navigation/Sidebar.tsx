@@ -9,9 +9,10 @@ import {
   UserCheck,
   Kanban,
   Plus,
-  FileCode,
   LogOut,
   Shield,
+  ShieldCheck,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { Button } from '@/components/common/Button';
@@ -28,6 +29,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
   const currentFilter = searchParams ? searchParams.get('filter') : null;
   const { user, logout } = useAuth();
 
+  const isAdmin = user?.role === 'ADMIN';
+  const isTeamLead = user?.role === 'TEAM_LEAD';
+
   const navItems = [
     {
       name: 'Dashboard',
@@ -35,18 +39,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
       icon: LayoutDashboard,
       isActive: pathname === '/dashboard',
     },
-    {
-      name: 'My Tasks',
-      href: '/tasks',
-      icon: CheckSquare,
-      isActive: pathname === '/tasks' && !currentFilter,
-    },
-    {
-      name: 'Assigned to Me',
-      href: '/tasks?filter=assigned',
-      icon: UserCheck,
-      isActive: pathname === '/tasks' && currentFilter === 'assigned',
-    },
+    ...(isAdmin
+      ? [
+          {
+            name: 'Employees',
+            href: '/employees',
+            icon: Users,
+            isActive: pathname === '/employees',
+          },
+          {
+            name: 'All Tasks',
+            href: '/tasks',
+            icon: CheckSquare,
+            isActive: pathname === '/tasks' && !currentFilter,
+          },
+        ]
+      : isTeamLead
+      ? [
+          {
+            name: 'Team Tasks',
+            href: '/tasks',
+            icon: CheckSquare,
+            isActive: pathname === '/tasks' && currentFilter !== 'assigned',
+          },
+          {
+            name: 'Assigned to Me',
+            href: '/tasks?filter=assigned',
+            icon: UserCheck,
+            isActive: pathname === '/tasks' && currentFilter === 'assigned',
+          },
+        ]
+      : [
+          {
+            name: 'My Tasks',
+            href: '/tasks?filter=created',
+            icon: CheckSquare,
+            isActive: pathname === '/tasks' && currentFilter !== 'assigned',
+          },
+          {
+            name: 'Assigned to Me',
+            href: '/tasks?filter=assigned',
+            icon: UserCheck,
+            isActive: pathname === '/tasks' && currentFilter === 'assigned',
+          },
+        ]),
     {
       name: 'Kanban Board',
       href: '/board',
@@ -132,23 +168,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
               ))}
             </nav>
           </div>
-
-          <div>
-            <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-              Developer APIs
-            </p>
-            <div className="space-y-1">
-              <a
-                href="http://127.0.0.1:8000/api/v1/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-              >
-                <FileCode className="w-4 h-4 shrink-0 text-slate-400" />
-                Swagger Docs (FastAPI)
-              </a>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -164,7 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
                 <p className="text-xs font-semibold text-slate-800 truncate">
                   {user?.name || 'TaskFlow User'}
                 </p>
-                {user?.role === 'ADMIN' && (
+                {user?.role === 'ADMIN' ? (
                   <span
                     title="Administrator"
                     className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800"
@@ -172,8 +191,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCreateTask, className }) => 
                     <Shield className="w-2.5 h-2.5 mr-0.5 inline" />
                     ADMIN
                   </span>
+                ) : user?.role === 'TEAM_LEAD' ? (
+                  <span
+                    title="Team Lead"
+                    className="inline-flex items-center text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800"
+                  >
+                    <ShieldCheck className="w-2.5 h-2.5 mr-0.5 inline" />
+                    LEAD
+                  </span>
+                ) : (
+                  <span
+                    title="Employee"
+                    className="inline-flex items-center text-[9px] font-medium px-1.5 py-0.2 rounded bg-slate-200 text-slate-700"
+                  >
+                    EMP
+                  </span>
                 )}
               </div>
+              {(user?.position || user?.department) && (
+                <p className="text-[10px] text-indigo-600 truncate font-medium">
+                  {[user.position, user.department].filter(Boolean).join(' • ')}
+                </p>
+              )}
               <p className="text-[11px] text-slate-400 truncate">
                 {user?.email || 'Authenticated'}
               </p>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Search,
   Plus,
@@ -27,9 +28,14 @@ import { userService } from '@/api/services/userService';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getTaskPermissions } from '@/utils/permissions';
 import { Task, TaskStatus, TaskPriority, User } from '@/types';
+import { extractErrorMessage } from '@/utils/formatters';
 
 export default function TasksPage() {
   const { user: currentUser } = useCurrentUser();
+  const searchParams = useSearchParams();
+  const filterParam = searchParams ? searchParams.get('filter') : null;
+  const taskIdParam = searchParams ? searchParams.get('taskId') : null;
+  const currentFilter = filterParam === 'assigned' ? 'assigned' : 'created';
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -37,6 +43,7 @@ export default function TasksPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
 
   // Search and Filter State
   const [searchInput, setSearchInput] = useState('');
@@ -53,6 +60,53 @@ export default function TasksPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+
+  // Reset page to 1 when changing between My Tasks and Assigned to Me
+  useEffect(() => {
+    setPage(1);
+  }, [currentFilter]);
+
+  // Synchronize highlighted task from query param and scroll into view
+  useEffect(() => {
+    if (taskIdParam) {
+      setHighlightedTaskId(taskIdParam);
+    }
+  }, [taskIdParam]);
+
+  useEffect(() => {
+    if (highlightedTaskId && tasks.length > 0) {
+      const el = document.getElementById(`task-row-${highlightedTaskId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [highlightedTaskId, tasks]);
+
+  // If taskIdParam was provided from notification but not in currently loaded list, fetch directly
+  useEffect(() => {
+    if (taskIdParam && !isLoading) {
+      const exists = tasks.some(
+        (t) => String(t.id || t._id) === String(taskIdParam)
+      );
+      if (!exists) {
+        taskService
+          .getTaskById(taskIdParam)
+          .then((task) => {
+            if (task) {
+              setTasks((prev) => {
+                if (prev.some((t) => String(t.id || t._id) === String(taskIdParam))) {
+                  return prev;
+                }
+                return [task, ...prev];
+              });
+            }
+          })
+          .catch(() => {
+            // Task might have been deleted or user lacks permission
+          });
+      }
+    }
+  }, [taskIdParam, tasks, isLoading]);
 
   // Debounce search input (300ms)
   useEffect(() => {
@@ -92,6 +146,7 @@ export default function TasksPage() {
         search: debouncedSearch.trim() || undefined,
         status: status ? (status as TaskStatus) : undefined,
         priority: priority ? (priority as TaskPriority) : undefined,
+        filter: currentFilter,
         sort_by: sortBy,
         sort_order: sortOrder,
         page,
@@ -106,12 +161,12 @@ export default function TasksPage() {
       setTotal(0);
       setTotalPages(1);
       setErrorBanner(
-        err?.response?.data?.detail || 'Failed to load tasks. Please verify your connection.'
+        extractErrorMessage(err?.response?.data?.detail, 'Failed to load tasks. Please verify your connection.')
       );
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSearch, status, priority, sortBy, sortOrder, page, pageSize]);
+  }, [debouncedSearch, status, priority, currentFilter, sortBy, sortOrder, page, pageSize]);
 
   // Initial load and event subscriptions for real-time reactivity
   useEffect(() => {
@@ -143,7 +198,7 @@ export default function TasksPage() {
       await taskService.updateTask(taskId, { status: newStatus });
       fetchTasks();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || 'Failed to update task status.');
+      alert(extractErrorMessage(err?.response?.data?.detail, 'Failed to update task status.'));
     }
   };
 
@@ -167,10 +222,11 @@ export default function TasksPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-            Task Management
+            {currentFilter === 'assigned' ? 'Assigned to Me' : 'My Tasks'}
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            {total} {total === 1 ? 'task deliverable' : 'task deliverables'} under management
+            {total} {total === 1 ? 'task deliverable' : 'task deliverables'}{' '}
+            {currentFilter === 'assigned' ? 'assigned to you' : 'created by you'}
           </p>
         </div>
 
@@ -262,6 +318,7 @@ export default function TasksPage() {
               { value: 'LOW', label: 'Low Priority' },
               { value: 'MEDIUM', label: 'Medium Priority' },
               { value: 'HIGH', label: 'High Priority' },
+              { value: 'URGENT', label: 'Urgent Priority' },
             ]}
           />
 
@@ -309,13 +366,21 @@ export default function TasksPage() {
       ) : tasks.length === 0 ? (
         <EmptyState
           icon={Inbox}
-          title={isFilterActive ? 'No tasks match your criteria' : 'No tasks created yet'}
+          title={
+            isFilterActive
+              ? 'No tasks match your criteria'
+              : currentFilter === 'assigned'
+              ? 'No tasks assigned to you yet'
+              : 'No tasks created yet'
+          }
           description={
             isFilterActive
               ? 'Try modifying or clearing your active search and filter options.'
+              : currentFilter === 'assigned'
+              ? 'You do not have any deliverables assigned to you at this time.'
               : 'Get started by creating your first task deliverable.'
           }
-          actionLabel={isFilterActive ? 'Clear Filters' : 'Create Task'}
+          actionLabel={isFilterActive ? 'Clear Filters' : currentFilter === 'assigned' ? undefined : 'Create Task'}
           onAction={isFilterActive ? clearFilters : () => setIsCreateModalOpen(true)}
         />
       ) : (
@@ -349,12 +414,22 @@ export default function TasksPage() {
                   return (
                     <tr
                       key={id}
-                      className="hover:bg-slate-50/70 transition-colors duration-100 group"
+                      id={`task-row-${id}`}
+                      className={`hover:bg-slate-50/70 transition-colors duration-100 group ${
+                        highlightedTaskId === id
+                          ? 'bg-indigo-50/80 ring-2 ring-indigo-500 rounded-lg shadow-sm'
+                          : ''
+                      }`}
                     >
                       {/* Title and Description Preview */}
                       <td className="py-3.5 px-4 max-w-xs sm:max-w-md">
-                        <div className="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                          {task.title}
+                        <div className="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors flex items-center gap-2">
+                          <span>{task.title}</span>
+                          {highlightedTaskId === id && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-600 text-white animate-pulse">
+                              Active Task
+                            </span>
+                          )}
                         </div>
                         {task.description && (
                           <div className="text-xs text-slate-500 line-clamp-1 mt-0.5">

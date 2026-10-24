@@ -56,6 +56,10 @@ lerna-debug.log*
 # Build Artifacts & Caches
 dist/
 frontend/dist/
+.next/
+frontend/.next/
+coverage/
+frontend/coverage/
 .vite/
 *.tsbuildinfo
 .eslintcache

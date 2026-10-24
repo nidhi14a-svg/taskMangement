@@ -39,10 +39,16 @@ export default function DashboardLayout({
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0">
-          <Header
-            onToggleMobileNav={() => setIsMobileNavOpen(true)}
-            onCreateTask={() => setIsCreateModalOpen(true)}
-          />
+          <React.Suspense
+            fallback={
+              <header className="h-16 bg-white border-b border-slate-200/90" />
+            }
+          >
+            <Header
+              onToggleMobileNav={() => setIsMobileNavOpen(true)}
+              onCreateTask={() => setIsCreateModalOpen(true)}
+            />
+          </React.Suspense>
 
           <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
             {children}

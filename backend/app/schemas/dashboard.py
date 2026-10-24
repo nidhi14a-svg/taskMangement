@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -34,4 +35,16 @@ class DashboardSummaryResponse(BaseModel):
     completion_rate: float = Field(
         default=0.0,
         description="Percentage of tasks completed: (completed_tasks / total_tasks) * 100",
+    )
+    total_employees: Optional[int] = Field(
+        default=None,
+        description="Total organization employees count (for ADMIN dashboard)",
+    )
+    total_team_members: Optional[int] = Field(
+        default=None,
+        description="Total team members count (for TEAM_LEAD dashboard)",
+    )
+    department: Optional[str] = Field(
+        default=None,
+        description="Department context for the user",
     )

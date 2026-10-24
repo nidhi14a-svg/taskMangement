@@ -33,7 +33,7 @@ describe('RegisterPage', () => {
     });
   });
 
-  it('renders all required registration fields and explicitly NO role selector', () => {
+  it('renders required registration fields, permitted role options (Employee & Team Lead), and NO public admin creation', () => {
     render(<RegisterPage />);
 
     expect(screen.getByRole('heading', { name: /create your account/i })).toBeInTheDocument();
@@ -41,13 +41,18 @@ describe('RegisterPage', () => {
     expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/department/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/job position/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login');
 
-    // Strict requirement: Ensure NO role selector exists in the DOM
-    expect(screen.queryByRole('combobox')).toBeNull();
-    expect(screen.queryByLabelText(/role/i)).toBeNull();
-    expect(screen.queryByText(/admin/i)).toBeNull();
+    // Role options exist for Employee and Team Lead
+    expect(screen.getByText('Employee')).toBeInTheDocument();
+    expect(screen.getByText('Team Lead')).toBeInTheDocument();
+
+    // Security check: Administrator cannot be self-selected
+    expect(screen.queryByRole('button', { name: /^admin$/i })).toBeNull();
+    expect(screen.getByText(/administrator accounts cannot be self-registered/i)).toBeInTheDocument();
   });
 
   it('toggles password and confirm-password visibility', async () => {
@@ -101,6 +106,27 @@ describe('RegisterPage', () => {
     expect(mockRegister).not.toHaveBeenCalled();
   });
 
+  it('requires invitation code when Team Lead role is selected', async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+
+    // Select Team Lead
+    await user.click(screen.getByText('Team Lead'));
+
+    // Verify Invite Code input appears
+    expect(await screen.findByLabelText(/team lead invitation code/i)).toBeInTheDocument();
+
+    // Try submitting without invitation code
+    await user.type(screen.getByLabelText(/full name/i), 'Lead Candidate');
+    await user.type(screen.getByLabelText(/email address/i), 'lead@example.com');
+    await user.type(screen.getByPlaceholderText('Minimum 8 characters'), 'StrongSecret99#');
+    await user.type(screen.getByPlaceholderText('Re-enter your password'), 'StrongSecret99#');
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByText(/an approved invitation code is required for team lead registration/i)).toBeInTheDocument();
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
   it('handles duplicate-email error (409) from backend API', async () => {
     const user = userEvent.setup();
     mockRegister.mockRejectedValueOnce({
@@ -123,13 +149,15 @@ describe('RegisterPage', () => {
     );
   });
 
-  it('submits valid registration without role and redirects to /login?registered=true', async () => {
+  it('submits valid registration as EMPLOYEE with department and position and redirects to /login?registered=true', async () => {
     const user = userEvent.setup();
     mockRegister.mockResolvedValueOnce({
       id: 'usr-new-1',
       name: 'Jane Doe',
       email: 'jane.doe@example.com',
-      role: 'USER',
+      role: 'EMPLOYEE',
+      department: 'Engineering',
+      position: 'Frontend Engineer',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     });
@@ -138,16 +166,20 @@ describe('RegisterPage', () => {
 
     await user.type(screen.getByLabelText(/full name/i), 'Jane Doe');
     await user.type(screen.getByLabelText(/email address/i), 'jane.doe@example.com');
+    await user.type(screen.getByLabelText(/job position/i), 'Frontend Engineer');
     await user.type(screen.getByPlaceholderText('Minimum 8 characters'), 'StrongSecret99#');
     await user.type(screen.getByPlaceholderText('Re-enter your password'), 'StrongSecret99#');
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
     await waitFor(() => {
-      // Must not include role in registration call
       expect(mockRegister).toHaveBeenCalledWith({
         name: 'Jane Doe',
         email: 'jane.doe@example.com',
         password: 'StrongSecret99#',
+        role: 'EMPLOYEE',
+        department: 'Engineering',
+        position: 'Frontend Engineer',
+        invite_code: undefined,
       });
       expect(mockPush).toHaveBeenCalledWith('/login?registered=true');
     });
@@ -159,7 +191,7 @@ describe('RegisterPage', () => {
         id: '1',
         name: 'Existing User',
         email: 'existing@example.com',
-        role: 'USER',
+        role: 'EMPLOYEE',
         created_at: '',
         updated_at: '',
       },

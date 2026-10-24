@@ -15,6 +15,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getTaskPermissions } from '@/utils/permissions';
 import { Task, TaskStatus, TaskPriority, User } from '@/types';
 import { AlertCircle, Info } from 'lucide-react';
+import { extractErrorMessage } from '@/utils/formatters';
 
 const taskFormSchema = z.object({
   title: z
@@ -24,7 +25,7 @@ const taskFormSchema = z.object({
     .max(255, 'Task title cannot exceed 255 characters'),
   description: z.string().optional(),
   status: z.enum(['TODO', 'IN_PROGRESS', 'COMPLETED']),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   due_date: z.string().optional(),
   assignee_id: z.string().optional(),
 });
@@ -35,6 +36,7 @@ export interface TaskFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   task?: Task | null;
+  defaultAssigneeId?: string | null;
   onSuccess?: (savedTask: Task) => void;
 }
 
@@ -60,6 +62,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   isOpen,
   onClose,
   task,
+  defaultAssigneeId,
   onSuccess,
 }) => {
   const { user: currentUser } = useCurrentUser();
@@ -135,10 +138,10 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
         status: 'TODO',
         priority: 'MEDIUM',
         due_date: '',
-        assignee_id: '',
+        assignee_id: defaultAssigneeId ? String(defaultAssigneeId) : '',
       });
     }
-  }, [isOpen, task, reset]);
+  }, [isOpen, task, defaultAssigneeId, reset]);
 
   const onSubmit = async (data: TaskFormData) => {
     setServerError(null);
@@ -173,6 +176,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           window.dispatchEvent(
             new CustomEvent('task-updated', { detail: { task: savedTask } })
           );
+          window.dispatchEvent(new CustomEvent('notification-updated'));
         }
       } else {
         // Create Mode
@@ -189,6 +193,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           window.dispatchEvent(
             new CustomEvent('task-created', { detail: { task: savedTask } })
           );
+          window.dispatchEvent(new CustomEvent('notification-updated'));
         }
       }
 
@@ -196,8 +201,10 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
       onClose();
     } catch (err: any) {
       setServerError(
-        err?.response?.data?.detail ||
+        extractErrorMessage(
+          err?.response?.data?.detail,
           'An error occurred while saving the task. Please verify your permissions.'
+        )
       );
     }
   };
@@ -300,6 +307,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
               { value: 'LOW', label: 'Low Priority' },
               { value: 'MEDIUM', label: 'Medium Priority' },
               { value: 'HIGH', label: 'High Priority' },
+              { value: 'URGENT', label: 'Urgent Priority' },
             ]}
           />
         </div>

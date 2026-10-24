@@ -12,6 +12,10 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
+  role?: string;
+  position?: string;
+  department?: string;
+  invite_code?: string;
 }
 
 export interface LoginResponse {
@@ -44,7 +48,7 @@ export const authService = {
 
   /**
    * Register a new user account via POST /api/v1/auth/register.
-   * Public registration strictly excludes the role parameter (assigned by backend).
+   * Transmits role, position, department, and invitation code to backend where RBAC policies are enforced.
    */
   async register(
     payloadOrEmail: RegisterPayload | string,
@@ -56,11 +60,18 @@ export const authService = {
         ? { email: payloadOrEmail, password: password || '', name: name || '' }
         : payloadOrEmail;
 
-    const response = await apiClient.post<User>(ENDPOINTS.AUTH.REGISTER, {
+    const requestBody: Record<string, any> = {
       name: payload.name.trim(),
       email: payload.email.trim().toLowerCase(),
       password: payload.password,
-    });
+    };
+
+    if (payload.role) requestBody.role = payload.role;
+    if (payload.position) requestBody.position = payload.position;
+    if (payload.department) requestBody.department = payload.department;
+    if (payload.invite_code) requestBody.invite_code = payload.invite_code;
+
+    const response = await apiClient.post<User>(ENDPOINTS.AUTH.REGISTER, requestBody);
     return response.data;
   },
 
